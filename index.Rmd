@@ -19,8 +19,6 @@ colorlinks:      yes
 #lot: true
 #lof: true
 # always_allow_html: yes
-
-
 # output:
 #     bookdown::pdf_book:
 #         keep_md: false

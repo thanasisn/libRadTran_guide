@@ -6,6 +6,3 @@
 
 <!-- # Παράρτημα -->
 
-    <!-- $ zcat /usr/share/man/man8/pbsnodes.8.gz | groff -mandoc -T html > man_qsub.html -->
-    <!-- $ zcat /usr/share/man/man1/qsub.1.gz | groff -mandoc -T html > man_qsub.html -->
-    <!-- $ zcat /usr/share/man/man8/pbsnodes.8.gz | groff -mandoc -T html > man_pbsnodes.html -->

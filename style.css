@@ -17,16 +17,16 @@ pre code {
 
 
 .book .book-summary {
-  width: 250px;
+  width: 300px;
   position:absolute;
   top:0;
-  left:-250px;
+  left:-300px;
 }
 
 .book.with-summary .book-header.fixed {
-    left: 250px;
+    left: 300px;
 }
 
 .book.with-summary .book-body {
-    left: 250px;
+    left: 300px;
 }
