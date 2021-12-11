@@ -1,0 +1,57 @@
+---
+title:           "Οδηγός χρήσης libRadtran."
+author:          "Thanasisn [github.com/thanasisn](https://github.com/thanasisn)"
+date:            "`r Sys.Date()`"
+site:            bookdown::bookdown_site
+# documentclass:  book
+documentclass:   article
+# url: your book url like https://bookdown.org/yihui/bookdown
+# cover-image: path to the social sharing image like images/cover.jpg
+description: |
+    This a simple guide in the usage of the libRadtran model in greek.
+github-repo:     rstudio/bookdown-demo
+urlcolor:        blue
+classoption:     [a4paper,twoside,titlepage,11pt]
+bibliography:    [references.bib]
+biblio-style:    apalike
+link-citations:  yes
+colorlinks:      yes
+#lot: true
+#lof: true
+# always_allow_html: yes
+
+
+# output:
+#     bookdown::pdf_book:
+#         keep_md: false
+# extra_dependencies:
+#     fontspec: null
+#     xunicode: null
+#     xltxtra:  null
+    # xgreek:   null
+
+---
+
+```{r setup, include=FALSE}
+require(knitr)
+opts_chunk$set(cache=F)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(out.width = '90%', fig.align='center')
+
+def_list = list()
+knitr::knit_hooks$set(engine = function(before, options) {
+    if (before && options$engine == 'definition') {
+        # collect definition terms from options$name
+        def_list[[options$label]] <<- options$name
+    }
+    NULL
+})
+source("~/Aerosols/Thesis/code_parse.R")
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+    x <- def.chunk.hook(x, options)
+    ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+```
+
+
