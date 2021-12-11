@@ -1,0 +1,72 @@
+% \documentclass[a4paper,twoside,titlepage,12pt]{article}
+
+\usepackage{booktabs}
+\usepackage{amsthm}
+
+\usepackage{fontspec}
+\usepackage{xunicode}
+\usepackage{xltxtra}
+\usepackage{xgreek}
+
+
+
+\makeatletter
+\def\thm@space@setup{%
+  \thm@preskip=8pt plus 2pt minus 4pt
+  \thm@postskip=\thm@preskip
+}
+\makeatother
+{}
+
+\usepackage{tabu}
+
+%%%% FONTS
+\usepackage{setspace}  % multiple line spaces available
+\setstretch{1.3} % maybe need for caption spacing
+\setmainfont[Scale=1.1]{Linux Libertine O}  % vv good
+%%%% CAPTION  format floats title
+\usepackage{caption}
+\clearcaptionsetup{}
+\captionsetup{justification=justified,
+    font={footnotesize},
+    singlelinecheck=false,
+    width=.85\textwidth,
+    labelfont=bf,textfont=it}
+
+%%%% SIUNITX   values and units
+\usepackage{siunitx}
+\sisetup{mode=text,range-phrase={~με~}}
+%\sisetup{range-units=single}
+\DeclareSIUnit\decaetia{δεκαετία}
+% \sisetup{output-decimal-marker = {,}}
+\sisetup{output-decimal-marker = {.}}
+\sisetup{expproduct=cdot}
+\sisetup{separate-uncertainty = true}
+
+%%%% παράγραφοι noindent και newline
+\parskip = \baselineskip
+
+
+%%%% PAGE GEOMETRY
+\usepackage{geometry}
+\geometry{
+    a4paper,
+    left     = 25mm,
+    right    = 25mm,
+    top      = 25mm,
+    bottom   = 25mm,
+    headsep  = 3\baselineskip,
+    footskip = 2\baselineskip}
+
+
+%%%% FLOATS
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+\numberwithin{table}{section}
+\usepackage{float}
+\floatstyle{plain}
+% \floatplacement{figure}{h}
+% \newfloat{img}{htb}{fpic}[section]
+% \newfloat{img}{H}{fpic}[section]
+\newfloat{img}{H}{fpic}[section]
+\floatname{img}{Εικόνα}

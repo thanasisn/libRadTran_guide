@@ -1,0 +1,303 @@
+
+Ανάθεση της εκτέλεσης στο PBS grid.
+--------------------------------------------------------------------------------
+
+### Εκτέλεση της εντολής uvspec (libRadtran) ως μία εργασία (job). ###
+
+Χρησιμοποιούμε ένα script (LBT_PBS.sh) σε Bash το οποίο αναλαμβάνει να καλέσει το εκτελέσιμο `uvspec` με τις παραμέτρους που του δίνει το σύστημα PBS. Αυτό το αρχείο θα εκτελεστεί σε κάθε πυρήνα, από τους διαθέσιμους και είναι υπεύθυνο για την ολοκλήρωση μίας προσομοίωσης ακτινοβολίας του μοντέλου.
+
+Οι παράμετροι (arguments) που δέχεται αυτό το script είναι τέσσερις.
+
+1. **Libradtran file path:** ο φάκελος όπου βρίσκονται τα αρχεία της libRadtran.
+2. **Libradtran output folder:** ο φάκελος όπου θα αποθηκευτούν τα παραγόμενα αρχεία.
+3. **unique id:** μοναδικός δείκτης για να χρησιμοποιηθεί στο όνομα των αρχείων κάθε εργασίας.
+4. **serialized string with uvspec options:** μία λέξη με όλες τις παραμέτρους που χρειάζεται να ορίσουμε σε μία εκτέλεση του `uvspec`. 
+
+Ο τρόπος που έχουμε επιλέξει για την αποστολή των παραμέτρων στο uvspec είναι η γραμμικοποίησή τους (serialization). Αυτό επιτρέπει την χρήση οποιοδήποτε κατάλληλων παραμέτρων της libRadtran χωρίς καμία τροποποίηση αυτού του αρχείου. Αυτό το πετυχαίνουμε, έχοντας κωδικοποιήσει την ερμηνεία του συμβόλου `@` ως νέα γραμμή και του `@@` ως τον χαρακτήρα του κενού. Με αυτόν τον τρόπο κάθε αρχείο εισόδου (.inp) μπορεί να σταλεί ως μία λέξη. Για παράδειγμα, η λέξη:
+
+```
+atmosphere_file@@aattmmoo=afglms.dat@source@@solar@@ssoollaa=kurudz_1.0nm.
+dat@mol_modify@@O3@@290@@DU@albedo@@0.05@sza@@26@altitude@@0.062694168@rte
+_solver@@sdisort@number_of_streams@@6@wavelength@@250@@5025@pseudospherica
+l@quiet@
+```
+
+θα μετατραπεί στο αρχείο εισόδου (.inp):
+
+```
+atmosphere_file /mnt/.../libRadtran-2.0.1/data/atmmod/afglms.dat
+source solar /mnt/.../libRadtran-2.0.1/data/solar_flux/kurudz_1.0nm.dat
+mol_modify O3 290 DU
+albedo 0.05
+sza 26
+altitude 0.062694168
+rte_solver sdisort
+number_of_streams 6
+wavelength 250 5025
+pseudospherical
+quiet
+
+```
+
+
+#### Αρχείο `LBT_PBS.sh`. ####
+   
+Στο πρώτο κομμάτι του script ελέγχουμε αν όλες οι παράμετροι έχουν δοθεί κανονικά από το PBS και προετοιμάζουμε τα ονόματα των αρχείων με τη πλήρη τους διαδρομή στο δίσκο.
+
+```{bash eval=FALSE, size="scriptsize"}
+#!/bin/bash
+libpath=$1   ## Libradtran file path .../libRadtran-2.0/
+workdir=$2   ## Libradtran output folder for this model family
+jobid=$3     ## unique id for this run
+options=$4   ## serialized string  with uvspec options
+## expand file paths
+UVSPEC="${libpath}/bin/uvspec"
+DATA="${libpath}/data"
+WPTEMP="${workdir}/clearwaterLAP"
+## have libRadtran path?
+if [ -z "$libpath" ]; then
+    echo "Empty variable 'libpath'"
+    exit 2
+fi
+## check executable location
+if [ ! -f "$UVSPEC" ]; then
+    echo "Can not find uvspec"                  ; exit 3
+fi
+## check data folder location
+if [ ! -d "$DATA" ]; then
+    echo "Can not find data folder $DATA"       ; exit 4
+fi
+## have working dir path?
+if [ -z "$workdir" ]; then
+    echo "Empty variable 'workdir'"             ; exit 5
+fi
+## check working folder location
+if [ ! -d "$workdir" ]; then
+    echo "Can not find working folder $workdir" ; exit 6
+fi
+## have jobid?
+if [ -z "$jobid" ]; then
+    echo "Empty variable 'jobid'"               ; exit 7
+fi
+## have libratran options?
+if [ -z "$options" ]; then
+    echo "Empty variable 'options'"             ; exit 8
+fi
+## create working folder
+mkdir -p "${WPTEMP}"
+## files for this job
+INPUT="${WPTEMP}/LBT_${jobid}.inp"
+OUPUT="${WPTEMP}/LBT_${jobid}.out"
+ERPUT="${WPTEMP}/LBT_${jobid}.err"
+```
+
+Στη συνέχεια μορφοποιούμε τις παραμέτρους της libRadtran σε ένα κατάλληλο αρχείο ".inp".
+
+```{bash eval=FALSE, size="scriptsize"}
+## create input file
+( echo $options | sed 's/@@/ /g' | sed 's/@/\n/g' | while read line ;do
+  echo $line | sed "s@aattmmoo=@"$DATA/atmmod/"@g"     \
+             | sed "s@ssoollaa=@"$DATA/solar_flux/"@g"
+    done ) > $INPUT
+```
+
+Εκτελούμε το `uvspec` παραπέμποντας τα κατάλληλα αρχεία (εισόδου, εξόδου και σφαλμάτων) και όταν τελειώσει η εκτέλεσή του συμπιέζουμε το αρχείο εξόδου. Η συμπίεση βοηθάει στο να μειωθεί το μέγεθος των αρχείων αποτελεσμάτων αλλά και στη μεταφορά τους από τον υπολογιστή που έκανε την εκτέλεση, στον υπολογιστή ελέγχου.
+
+```{bash eval=FALSE, size="scriptsize"}
+#### ready to run uvspec
+tic=$(date +"%s")
+loa="$(uptime | grep -o "load .*")"
+export LIBRADTRAN_DATA_FILES=${DATA}
+( $UVSPEC < $INPUT > $OUPUT ) >& $ERPUT
+wait; wait
+gzip -f $OUPUT
+tac=$(date +"%s")
+```
+
+Αποθηκεύουμε κάποιες επιπρόσθετες πληροφορίες σχετικά με τον χρόνο εκτέλεσης και το σύστημα στο οποίο έγινε, ώστε να τις χρησιμοποιήσουμε σε περίπτωση σφαλμάτων.
+
+```{bash eval=FALSE, size="scriptsize"}
+## helpful info for this run and uvspec error collector
+( echo $loa
+  uptime | grep -o "load .*"
+  echo "hostname=$(hostname)"
+  date +"%F %T"
+  echo $tic
+  echo $tac                    )   >> $ERPUT
+exit 0
+```
+
+
+### Τροφοδοσία παρτίδας εργασιών στο grid. ###
+
+Για να αναθέσουμε μία παρτίδα εργασιών (batch job), χρησιμοποιούμε ένα παραμετρικό αρχείο (submit.pbs) το οποίο περιέχει και ορίζει τις παραμέτρους εκτέλεση της παρτίδας. Εδώ, καθορίζονται οι παράμετροι που ελέγχουν τον τρόπο εκτελεσης της λίστα εργασιών. Για παράδειγμα, το πώς θα γίνει η αναφορά κατά την εκτέλεση, η διαχείριση των λαθών (error handling) κλπ.
+
+Το αρχείο αυτό έχει ταυτόχρονα την λειτουργία του παραμετρικού αρχείου για το PBS. Αλλά, και την λειτουργία Bash script που το εκτελεί το PBS προκειμένου να χρησιμοποιήσει το περιεχόμενό/αποτέλεσμα των εντολών του.
+
+Το δείγμα αρχείου που παραθέτουμε μπορεί να χρησιμοποιηθεί, είτε για την μερική εκτέλεση/δοκιμή μιας παρτίδας εργασιών, ή για την πλήρη εκτέλεση μιας παρτίδας.
+
+
+#### Αρχείο `submit.pbs`.
+
+Οι σειρές που ξεκινούν με '#PBS' αφορούν παραμέτρους (arguments) που χρησιμοποιούνται από την εντολή `qsub` του PBS. Περισσότερες λεπτομέρειες στο manual της εντολής (`man qsub`).
+
+```{bash eval=F, size="scriptsize"}
+#!/bin/bash
+#PBS -N clearatm
+#PBS -j oe
+#PBS -q see
+#PBS -M at...ys@gmail.com
+#PBS -m abe
+#PBS -l nodes=1:ppn=1
+#PBS -o condorlog/run.log
+#PBS -t 1-10
+```
+
+Οι μεταβλητές που ξεκινούν με `PBS_*` παίρνουν τιμή από το σύστημα PBS κατά την εκτέλεση των ανεξάρτητων εργασιών (jobs). Εδώ, ως εργασία νοείται η εκτέλεση του αρχείου `LBT_PBS.sh` με τις κατάλληλες παραμέτρους και φυσικά αυτό είναι που θα καλέσει τελικά το `uvspec`. Όλα τα υπόλοιπα καθορίζουν την ανάσυρση των παραμέτρων από την λίστα εργασιών και η καταγραφή της προόδου της παρτίδας σε αρχείο.
+
+```{bash eval=F, size="scriptsize"}
+jobhomedir="/mnt/.../LibRadTranM/clear_water_pressure_ozone_LAP_meas/"
+joblogfile="${jobhomedir}/condorlog/clearwatermeas_$(date +"%F").log"
+echo $PBS_O_WORKDIR >> "${joblogfile}"
+cd "$jobhomedir"
+## parse arguments from file
+args=`sed -n "${PBS_ARRAYID} p" jobs_args.list`
+arglist=($args)
+arg1="/mnt/lapmg_a/.../libRadtran-2.0.1/"
+arg2="/mnt/lapmg_a/.../LibRadTranM/clear_water_pressure_ozone_LAP_meas/"
+arg3=${arglist[0]}
+arg4=${arglist[1]}
+(   echo $(hostname) $PBS_O_HOST  $PBS_SERVER $PBS_O_QUEUE
+    echo ${PBS_O_WORKDIR}
+    echo "JOBID =" ${PBS_ARRAYID}
+    echo "arg12" ${arg1} ${arg2}
+    echo "arg3="${arg3}
+    echo "arg4="${arg4}
+    echo "-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~"
+)  >>  "${joblogfile}"
+## this is a job run
+./LBT_PBS.sh $arg1 $arg2 $arg3 $arg4
+```
+
+Θεωρούμε ότι ο αναγνώστης, είτε είναι εξοικειωμένος με τη χρήση του Bash shell, είτε ότι μπορεί να αναζητήσει πληροφορίες για την χρήση και την ερμηνεία των παραπάνω εντολών στο διαδίκτυο.
+
+
+### Εκτέλεση μεγάλης παρτίδας ###
+
+Προκειμένου να οργανώσουμε καλύτερα την κατάθεση (submission) κάποιας μεγάλης παρτίδας (1000+ jobs), και κατόπιν επικοινωνίας με τους διαχειριστές του grid. Για την καλύτερη εξυπηρέτηση των χρηστών του grid, γράψαμε ένα Bash script ώστε να κάνουμε την κατάθεση σε μικρότερα τμήματα και με κάποια χρονική απόσταση.
+
+#### Αρχείο `multisub.sh`
+
+Οι μεταβλητές 'step' και 'watt' καθορίζουν αντίστοιχα το μέγεθος των πακέτων εργασιών και τον χρόνου μεταξύ κάθε τμήματος. Οι τιμές τους σχετίζονται με τον χρόνο εκτέλεσης της libRadtran και τους διαθέσιμους πυρήνες. Οι τιμές εδώ, είναι ενδεικτικές για "σχετικά βαριές" εκτελέσεις της libRadtran. Σημειώνουμε ότι εδώ ο χρόνος αναμονής μεταξύ των πακέτων αυξάνεται γραμμικά.
+
+```{bash eval=F, size="scriptsize"}
+#!/bin/bash
+subfile="clearatm_submit.pbs"
+total=4900
+step=150
+watt=40
+
+## get total lines
+total="$(cat jobs_args.list | wc -l)"
+echo
+echo $subfile
+echo Total: $total
+echo step : $step
+echo wait : $watt
+echo "" ; input=0
+echo -n "Submit  (y/n)?: "
+read  input
+if [ "$input" == "y" -o "$input" == "Y" ] ; then
+    echo "                  Bombs Away...."
+    echo
+else
+    echo
+    echo "ABORT! ABORT! ABORT! ABORT!"
+    echo
+    exit 0
+fi
+echo
+for ii in $(seq 0 $((total / step - 1))); do
+    date -d"+$((watt*ii+1)) seconds" +"next at:  %F %T "; echo
+    sleep $((watt*ii+1))
+    echo "running: qsub -t $((step*ii+1))-$((step*ii+step)) ${subfile}"
+    qsub -t $((step*ii+1))-$((step*ii+step))  "${subfile}"
+done
+if [ $((total % step )) -gt 0 ];then
+    date -d"+$((watt*ii+1)) seconds" +"next at:  %F %T "; echo
+    sleep $((watt*ii+1))
+    echo "run: qsub -t $((step*ii+step+1))-$((step*ii+step+total%step)) ${subfile}"
+    qsub -t $((step*ii+step+1))-$((step*ii+step+total%step)) "${subfile}"
+fi
+echo
+echo " * * *  submitting done  * * *"
+echo
+exit 0
+```
+
+
+### Κοινές εντολές για την διαχείριση των παρτίδων εργασιών. ###
+
+Εκτέλεση παρτίδας όπως καθορίζεται από τις παραμέτρους του αρχείου 'submit.pbs'.
+Η γραμμή '#PBS -t 1-10' στο αρχείο λέει στο PBS να εκτελέσει τις εργασίες 1 έως 10. 
+Αυτός είναι ένας τρόπος για να δοκιμάζονται μεγαλύτερες παρτίδες εργασιών ως προς την ορθότητα των ρυθμίσεών τους, πριν αφεθούν να τρέξουν στο σύνολό τους.
+```{bash eval=F, size="scriptsize"}
+qsub submit.pbs
+```
+
+Ενας τρόπος να μπουν 100 εργασίες στη σειρά αναμονής προς εκτέλεση (queue).
+```{bash eval=F, size="scriptsize"}
+qsub -t 301-400 submit.pbs
+```
+
+Λίστα με τις εργασίες στην ουρά (queue).
+```{bash eval=F, size="scriptsize"}
+qstat -t
+```
+
+Λίστα με τις εργασίες που εκτελούνται.
+```{bash eval=F, size="scriptsize"}
+qstat -e
+```
+
+Λίστα με τους υπολογιστές (nodes) όπου εκτελούνται οι εργασίες.
+```{bash eval=F, size="scriptsize"}
+qstat -n1
+```
+
+Σταματάει όλες τις εργασίες της παρτίδας 4168020.
+```{bash eval=F, size="scriptsize"}
+qdel 4168020
+```
+
+Σταμάτημα επιλεγμένων εργασιών της παρτίδας 4168020.
+```{bash eval=F, size="scriptsize"}
+qdel 4168020[]
+```
+
+Συνεχείς τρόποι παρακολούθησης των εργασιών σε εκτέλεση/ουρά.
+```{bash eval=F, size="scriptsize"}
+watch -ν10 ' qstat -t | grep " R " | wc -l ; \
+             qstat -t | grep " Q " | wc -l ; \
+             qstat -t '
+watch ' qstat -t | grep " R " | wc -l ; \
+        qstat -t | grep " Q " | wc -l ; \
+        qstat -t | grep " R " '
+```
+
+
+Διαθέσιμοι πόροι χωρίς τους εκτός λειτουργίας κόμβους.
+```{bash eval=F, size="scriptsize"}
+pbsnodes -c
+```
+
+Λίστα όλων των κόμβων.
+```{bash eval=F, size="scriptsize"}
+pbsnodes -l
+```
+
+
+Περισότερες πληροφορίες για τις παραπάνω εντολές μπορούν να βρεθούν στις αντίστοιχες
+σελίδες `man`ual (`man pbsnodes`, `man qstat`, `man qsub`) ή στο Παράρτημα (`pbsnodes`: \@ref(manpbsnodes),
+`qstat`: \@ref(manqstat),
+`qsub`: \@ref(manqsub)).

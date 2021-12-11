@@ -1,0 +1,18 @@
+book_filename: "LibRadtran_guide"
+language:
+  label:
+    fig:    'Σχήμα '
+    img:    'Εικόνα '
+    tab:    'Πίνακας '
+    eq:     'Σχέση '
+    thm:    'Theorem '
+    lem:    'Lemma '
+    def:    'Definition '
+    cor:    'Corollary '
+    prp:    'Proposition '
+    ex:     'Example '
+    proof:  'Proof. '
+    remark: 'Remark. '
+  ui:
+    chapter_name: "Κεφάλαιο "
+delete_merged_file: true

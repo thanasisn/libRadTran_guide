@@ -1,0 +1,119 @@
+
+Δημιουργία λίστα παραμέτρων προς εκτέλεση.
+--------------------------------------------------------------------------------
+
+Η λίστα παραμέτρων μίας παρτίδας εργασιών περιγράφει όλες τις συνθήκες με τις οποίες επιθυμούμε να γίνει η προσομοίωση της ακτινοβολίας στην ατμόσφαιρα.
+
+Επιλέξαμε να δημιουργούμε αυτή τη λίστα σε δύο στάδια.
+Στην αρχή, καθορίζονται οι συνθήκες για τις οποίες επιθυμούμε να τρέξουμε την libRadtran και από αυτές κατασκευάζουμε όλα τα ενδεχόμενα.
+Στη συνέχεια, η λίστα των επιθυμητών ενδεχομένων συγκρίνεται με τα υπάρχοντα αποτελέσματα, ώστε να αποφευχθεί ο επαναυπολογισμός ήδη έτοιμων δεδομένων.
+Το αποτέλεσμα είναι μία νέα παρτίδα εργασιών που μπορεί να κατατεθεί στο grid για επεξεργασία.
+
+Με αυτόν τον τρόπο, μπορούμε να ξεκινήσουμε με αρκετά αραιές επιθυμητές συνθήκες, και στη συνέχεια να αυξήσουμε την πυκνότητά τους ανάλογα με τις παραμέτρους για τις οποίες ενδιαφερόμαστε. 
+Μοιράζοντας τον φόρτο εργασίας σε μικρότερα κομμάτια, έχοντας τη δυνατότητα να εκτιμήσουμε προοδευτικά τα αποτελέσματα που παίρνουμε από το μοντέλο και ελέγχοντας για την ύπαρξη προηγούμενων αποτελεσμάτων, μπορούμε να μειώσουμε τους άσκοπους υπολογισμούς.
+
+Παρακάτω παραθέτουμε ένα script γραμμένο σε 'R'το οποίο προσπαθεί να δημιουργήσει έναν ορθογώνιο χώρο φάσεων. Εδώ, φαίνεται και ο τρόπος γραμμικοποίησης των παραμέτρων του `uvspec`. Δεν θα περιγράψουμε τη λειτουργία του καθώς το ίδιο αποτέλεσμα μπορεί να επιτευχθεί με οποιαδήποτε γλώσσα προγραμματισμοί.
+
+#### Αρχείο `LBT_job_list_creationPBS.R`
+\  
+```{r eval=FALSE, size="scriptsize"}
+#!/usr/bin/env Rscript
+#### Clear environment ------------------------------------
+closeAllConnections()
+rm(list = (ls()[ls() != ""]))
+Sys.setenv(TZ = "UTC")
+tic = Sys.time()
+library(bitops)
+## folder for this model family
+# setwd("/mnt/lapmg_a/.../LibRadTranM/clear_H2O_LAP")
+datafile    = "../clear_H2O_LAP.Rds"
+outfilelist = "jobs_args.list"
+if ( ! file.exists(datafile) ) {
+    stop("No previus results found")
+}
+#### Options to create multiple jobs ----------------------
+wvlngth_min       = 250
+# wvlngth_max       = 4000.0
+wvlngth_max       = 5025
+# spline_min        = 250
+# spline_max        = 4000
+# spline_stp        = 1
+altitude          = 62.694168/1000.         ## for LAP 62.694168/1000.
+number_of_streams = 6
+rte_solver        = "sdisort"
+mol_modify_O3     = seq( 290, 370, 10)      ## climatology or iterate
+mol_modify_H2O    = seq(2, 37, 10)          ## MM : kg/m^2
+## Min sza for thessaloniki ~17.20.
+## At sza=100 something breaks !!!!
+sza               = unique(c( seq(  15,   95,  10),
+                              seq(  25,   90,  10),
+                              0 )) 
+atmosphere_file   = c("afglms", "afglmw" )
+source_solar      = c("kurudz_1.0nm", "kurudz_0.1nm","kurudz_full")
+albedo            = unique(c( seq( 0.05, 0.15, 0.05), 0.07 ))
+
+#### create combination of all options given --------------
+todolisting <- expand.grid( wvlngth_min       = wvlngth_min,
+                            wvlngth_max       = wvlngth_max,
+                            atmosphere_file   = atmosphere_file,
+                            source_solar      = source_solar,
+                            rte_solver        = rte_solver,
+                            number_of_streams = number_of_streams,
+                            sza               = unique(sza),
+                            mol_modify_O3     = unique(mol_modify_O3),
+                            mol_modify_H2O    = unique(mol_modify_H2O),
+                            albedo            = unique(albedo),
+                            altitude          = altitude,
+                            stringsAsFactors = FALSE)
+todolisting <- data.frame(todolisting,stringsAsFactors = FALSE)
+colanmes    <- names(todolisting)
+#### load saved results
+saved_results          <- readRDS(datafile)
+saved_results          <- data.frame(saved_results, stringsAsFactors = FALSE)
+saved_results$hostname <- as.character(saved_results$hostname)
+
+### Find jobs to do
+temptodo  = todolisting[,colanmes]    ## will keep intact
+tempsaved = saved_results[,colanmes]  ## used to compare
+## combine with index
+temptodo$coder  = "A"
+tempsaved$coder = "B"
+temp  <- rbind(tempsaved, temptodo )
+uniqu <- !duplicated( temp[,colanmes] )
+## keep unique
+temp = temp[uniqu,]
+## dont include "B" (saved results)
+temp = temp[temp$coder == "A",]
+## drop coder column
+todolisting = subset( temp, select = -coder )
+if ( length(todolisting[,1]) < 1 ) stop("STOPED! No jobs to do")
+
+## add job index to keep track
+todolisting$job_id = cksum(apply(todolisting, 1, paste, collapse=""))
+## creat file with list of jobs to submit serialize
+cat("",file = outfilelist)
+for (ri in 1:nrow(todolisting)){
+    OptVect = todolisting[ri,]
+    cat(sprintf(""),
+        sprintf("%s ",                               OptVect$job_id),
+        sprintf("atmosphere_file@@aattmmoo=%s.dat@", OptVect$atmosphere_file),
+        sprintf("source@@solar@@ssoollaa=%s.dat@",   OptVect$source_solar),
+        sprintf("mol_modify@@O3@@%s@@DU@",           OptVect$mol_modify_O3),
+        sprintf("mol_modify@@H2O@@%s@@MM@",          OptVect$mol_modify_H2O),
+        sprintf("albedo@@%s@",                       OptVect$albedo),
+        sprintf("sza@@%s@",                          OptVect$sza),
+        sprintf("altitude@@%s@",                     OptVect$altitude),
+        sprintf("rte_solver@@%s@",                   OptVect$rte_solver),
+        sprintf("number_of_streams@@%s@",            OptVect$number_of_streams),
+        sprintf("wavelength@@%s@@%s@",               OptVect$wvlngth_min,
+                                                     OptVect$wvlngth_max ),
+        sprintf("pseudospherical@"),
+        sprintf("quiet@"),
+        sprintf("\n"),
+        sep = "",
+        file = outfilelist,
+        append = TRUE
+    )
+}
+cat(paste("Jobs to do: ", nrow(todolisting), "\n"))
+```

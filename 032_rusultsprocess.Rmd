@@ -1,0 +1,227 @@
+
+Επεξεργασία των αποτελεσμάτων.
+--------------------------------------------------------------------------------
+
+Ο υπολογιστής από τον οποίο κάνουμε την ανάθεση των εργασιών έχει εγκατεστημένη την γλώσσα προγραμματισμού 'R'. Θα την χρησιμοποιήσουμε για να συγκεντρώσουμε τα αποτελέσματα που μας ενδιαφέρουν.
+
+Θα διαβάσουμε τα πρωτογενή δεδομένα από τα αρχεία που παράχθηκαν κατά την εκτέλεση της libRadtran και θα τα αποθηκεύσουμε σε ένα αρχείο δεδομένων της 'R'. Με αυτόν τον τρόπο, αποφεύγουμε την μεταφορά μεγάλων ποσοτήτων δεδομένων, στις περιπτώσεις που μας ενδιαφέρουν μόνο κάποιες συγκεντρωτικές τιμές.
+
+Παρακάτω παρατίθεται ένα παράδειγμα για το πώς μπορεί να επιτευχθεί αυτό. Δεν κρίνουμε σκόπιμο να αναλύσουμε τη λειτουργία του script διότι η διαδικασία αυτή μπορεί να γίνει με διαφορετικού τρόπους και χρησιμοποιώντας πολλές άλλες γλώσσες προγραμματισμού, ανάλογα με τις ανάγκες και τις δεξιότητες του χρήστη. 
+
+#### Αρχείο `parse_data.R`.
+\  
+```{r eval=FALSE, size="scriptsize"}
+#!/usr/bin/env Rscript
+#### Clear environment ----------------------------------------------
+closeAllConnections()
+rm(list = (ls()[ls() != ""]))
+Sys.setenv(TZ = "UTC")
+tic = Sys.time()
+## folder for this model family
+# setwd("/mnt/lapmg_a/.../LibRadTranM/lear_H2O_LAP")
+## folder paths
+jobsfolder = "clearwaterLAPmeas/"
+datafolder = "DATA/"
+archfolder = "DATA/ARCHIVED/"
+if (file.exists(datafolder) & 
+    file.exists(archfolder) & 
+    file.exists(jobsfolder)  )  {
+    cat("\nFolders exists\n")
+} else {
+    stop("Can not see all Folders")
+}
+## read libraries
+source("../R_common/trapezUVSPEC.R")
+## data output
+datafile    = "../clear_H2O_PR_O3_meas_LAP.Rds"
+## function to read inp files
+input_parms <- function(inputfile) {
+    if (!file.exists(inputfile)) stop(paste("Missinig file: ", inputfile))
+
+    # read input file
+    fcon   = file(inputfile)
+    lines  = readLines(fcon)
+    close(fcon)
+    # 1
+    atmosphere_file    = basename(unlist(strsplit(grep(
+                         "atmosphere_file", lines, value = TRUE), " +"))[2])
+    atmosphere_file    = unlist(strsplit(
+                         atmosphere_file, '.dat', fixed = T))[1]
+    # 2
+    source_solar       = basename(unlist(strsplit(grep(
+                         "source solar",    lines, value = TRUE), " +"))[3])
+    source_solar       = unlist(strsplit(
+                         source_solar, '.dat', fixed = T))[1]
+    # 3
+    mol_modify_O3      = as.numeric(unlist(strsplit(grep(
+                         "mol_modify O3",   lines, value = TRUE), " +"))[3])
+    # 4
+    albedo             = as.numeric(unlist(strsplit(grep(
+                         "albedo",          lines, value = TRUE), " +"))[2])
+    # 5
+    sza                = as.numeric(unlist(strsplit(grep(
+                         "sza",             lines, value = TRUE), " +"))[2])
+    # 6
+    altitude           = as.numeric(unlist(strsplit(grep(
+                         "altitude",        lines, value = TRUE), " +"))[2])
+    # 7
+    rte_solver         =            unlist(strsplit(grep(
+                         "rte_solver",      lines, value = TRUE), " +"))[2]
+    # 8
+    number_of_streams  = as.numeric(unlist(strsplit(grep(
+                         "number_of_streams", lines, value = TRUE), " +"))[2])
+    # 9
+    wavelength         = as.numeric(unlist(strsplit(grep(
+                         "wavelength",      lines, value = TRUE), " +" ))[2:3])
+    wvlngth_min        = wavelength[1]
+    wvlngth_max        = wavelength[2]
+    # 10
+    pseudospherical    = any(grepl("^ *pseudospherical", lines ))
+    # 11
+    mol_modify_H2O     = as.numeric(unlist(strsplit(grep(
+                         "mol_modify H2O +[.0-9]+ +MM",
+                         lines, value = TRUE), " +"))[3])
+    # 12
+    pressure           = as.numeric(unlist(strsplit(grep(
+                         "pressure",        lines, value = TRUE), " +"))[2])
+
+    aninput = data.frame(atmosphere_file   = atmosphere_file,
+                         source_solar      = source_solar,
+                         mol_modify_O3     = mol_modify_O3,
+                         mol_modify_H2O    = mol_modify_H2O,
+                         albedo            = albedo,
+                         sza               = sza,
+                         altitude          = altitude,
+                         pressure          = pressure,
+                         rte_solver        = rte_solver,
+                         number_of_streams = number_of_streams,
+                         wvlngth_min       = wvlngth_min,
+                         wvlngth_max       = wvlngth_max)
+    return(aninput)
+}
+## function to get integral of .out collumns
+output_read_trapz <- function( outputfile ) {
+    if (!file.exists(outputfile)) stop(paste("Missinig file: ", outputfile))
+
+    ## fmt: lambda edir edn eup uavgdir uavgdn uavgup
+    tempdata = read.table( outputfile )
+    get      = trapezUVSPEC(tempdata)
+    data.frame(edir    = get[1],
+               edn     = get[2],
+               eup     = get[3],
+               eglo    = get[1] + get[2] )
+}
+## function to read .err files
+error_param <- function(errfile) {
+    if (!file.exists(errfile)) stop(paste("Missinig file: ", errfile))
+    
+    # read input file
+    fcon   = file(errfile)
+    lines  = readLines(fcon)
+    close(fcon)
+    ## start end
+    minD  = min(as.numeric(grep("^[0-9]+$", lines, value = TRUE)))
+    maxD  = max(as.numeric(grep("^[0-9]+$", lines, value = TRUE)))
+    hosts = grep("hostname=.*", lines, value = TRUE)
+    hosts = unlist(strsplit(hosts,"="))[2]
+    if (hosts != "") {
+        host = hosts
+    } else {
+        host = "unknown"
+    }
+    return(data.frame( hostname = host,
+                       ticTime  = minD,
+                       tacTime  = maxD))
+}
+####  Parsing starts here  #####
+## read saved data or fail
+saved_data <- readRDS(datafile)
+# saved_data <- data.frame()  # if there is no previous file
+## read list of inp files
+# inpfiles = list.files(path       = datafolder,
+inpfiles = list.files(path       = jobsfolder,
+                      pattern    =  "LBT_.*.inp",
+                      full.names = TRUE,
+                      recursive  = FALSE)
+if (length(inpfiles) < 1) stop("No input files found")
+
+## check if all files matching
+pause = FALSE
+for (ii in inpfiles) {
+    outputfile = paste0(unlist( strsplit( ii, split = ".inp" ) )[1],".out.gz")
+    errfile    = paste0(unlist( strsplit( ii, split = ".inp" ) )[1],".err")
+    ## check output files
+    if (!file.exists(outputfile)) {
+        cat(paste("Missing file",outputfile),sep = "\n")
+        pause = TRUE
+    }
+    ## check error files
+    if (!file.exists(errfile)) {
+        cat(paste("Missing file",errfile),sep = "\n")
+        pause = TRUE
+    }
+}
+outfiles = list.files(path       = jobsfolder,
+                      pattern    =  "LBT_.*.out.gz",
+                      full.names = TRUE,
+                      recursive  = FALSE )
+for (ii in outfiles) {
+    inpurfile = paste0(unlist( strsplit( ii, split = ".out.gz" ) )[1],".inp")
+    ## check input files
+    if (!file.exists(inpurfile)) {
+        cat(paste("Missing file",inpurfile),sep = "\n")
+        pause = TRUE
+    }
+}
+if (pause) {
+    stop("Pause to manual clean files")
+}
+cat(paste(length(inpfiles), " files to read\n"  ))
+## read data to a data frame
+gather = data.frame()
+ccc = 0
+for (ii in inpfiles) {
+    ccc = ccc + 1
+    cat(paste(ccc, "/", length(inpfiles), " processed\n"  ))
+    outputfile = paste0(unlist( strsplit( ii, split = ".inp" ) )[1],".out.gz")
+    errfile    = paste0(unlist( strsplit( ii, split = ".inp" ) )[1],".err")
+    record     = cbind( input_parms(ii),
+                        output_read_trapz(outputfile),
+                        error_param(errfile) )
+    gather = rbind( gather, record )
+}
+colall = c(
+    "atmosphere_file", "source_solar", "mol_modify_O3",  "albedo",
+    "sza",             "altitude",     "rte_solver",     "number_of_streams",
+    "wvlngth_min",     "wvlngth_max",  "edir",           "eglo",
+    "edn",             "eup",          "mol_modify_H2O", "pressure"
+)                                                        
+colinp = c(                                              
+    "atmosphere_file", "source_solar", "mol_modify_O3",  "albedo",
+    "sza",             "altitude",     "rte_solver",     "number_of_streams",
+    "wvlngth_min",     "wvlngth_max",  "mol_modify_H2O", "pressure"
+)
+## combine old and new data
+combined_data <- rbind(saved_data, gather)
+## keep unique input combination
+uniqueinqx    <- !duplicated(combined_data[,colinp])
+combined_data <- combined_data[uniqueinqx,]
+## check different results for same input
+if (any(duplicated(combined_data[,colall]))){
+    stop("Posible different results for the same input")
+}
+# ## this will remove stored data!!
+# saved_data = saved_data[ saved_data$sza<50, ]
+# saveRDS( saved_data,
+#          file = datafile,
+#          compress = "xz")
+## save this set of data as local repository
+# combined_data <- data.frame() ## used to reset stored data
+saveRDS( combined_data,
+         file = datafile,
+         compress = "xz")
+cat( " now you can move files to ARCHIVED ")
+# print(apply(combined_data[,c(1:10,17)], 2, unique))
+str(combined_data)
+summary(combined_data)
+```

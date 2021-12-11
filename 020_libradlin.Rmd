@@ -1,0 +1,361 @@
+
+\newpage
+
+Παράλληλη εκτέλεση του 'uvspec' σε Bash shell.
+================================================================================
+
+
+Οι παρακάτω μέθοδοι έχουν δοκιμαστεί σε περιβάλλον GNU/Linux και Windows (Cygwin). Θεωρούμε ότι η εκτέλεση γίνεται σε έναν υπολογιστή του οποίου θέλουμε να αξιοποιήσουμε όλους ή μερικούς από τους πυρήνες του επεξεργαστή του. Με κάποιες τροποποιήσεις και σχεδίαση, οι λύσεις αυτές μπορούν να εφαρμοστούν ταυτόχρονα και σε περισσότερους υπολογιστές, δεν θα αναφερθούμε ιδιαίτερα σε αυτό διότι υπάρχουν εξειδικευμένα εργαλεία για αυτή την δουλειά, όπως: 
+[GNU parallel](https://www.gnu.org/software/parallel/) (shell), 
+[PPSS](https://github.com/louwrentius/PPSS) (shell), 
+[HTCondor](https://research.cs.wisc.edu/htcondor/), 
+[dispy](http://dispy.sourceforge.net/) (python), 
+[snow](https://cran.r-project.org/web/packages/snow/index.html) (R) 
+κ.λ.π.
+
+Και στις δύο περιπτώσεις, πρέπει να υπάρχουν έτοιμα τα αρχεία εισόδου (.inp) της libRadtran. Ο τρόπος παραγωγής τους, δεν θα μας απασχολήσει, καθώς μπορεί να γίνει με τα προτιμώμενα εργαλεία του χρήστη.
+
+Παραλληλοποίηση με τη χρήση της εντολής `xargs`.
+--------------------------------------------------------------------------------
+
+Σε αυτήν την περίπτωση χρησιμοποιούμε δύο Bash script, το πρώτο (xargs_uvspec_worker.sh) είναι υπεύθυνο για την μία εκτέλεση του `uvspec` με τις κατάλληλες παραμέτρους (arguments). Και το άλλο (xargs_parallel.sh), έχει την οργάνωση της παρτίδας εργασιών που θα εκτελεστούν από την εντολή `xargs`. Η εντολή `xargs` έχει την δυνατότητα να παρακολουθεί, μεταξύ άλλων, την χρήση των πυρήνων του επεξεργαστή, καθώς και να ελέγχει την εκτέλεση πολλαπλών εντολών. 
+
+
+
+### Αρχείο `xargs_uvspec_worker.sh` 
+\  
+```{bash eval=FALSE, size="scriptsize"}
+#!/bin/bash
+## Worker to run one instance of uvspec, this is to be used by another script
+
+## get arguments
+OUTDIR="${1}"
+ERRDIR="${2}"
+total="${3}"
+Tic="${4}"
+INPUTF="${5}"
+cntt="${6}"
+
+## file to log this run
+logfile="/path/to/a/log/file/JOB_$(date +"%F").log"
+
+## set libradtran executable path
+UVSPEC="/path/to/uvspec"
+
+## check how many arguments
+if [ $# -ne 6 ] ; then  echo " 6 arguments needed" ;  exit 1 ; fi
+
+## input base file name
+fname="$(basename $INPUTF)"
+## out and error file names
+OUTFIL="${OUTDIR}/${fname%.*}.out"
+ERRFIL="${ERRDIR}/${fname%.*}.err"
+
+## print some info while running
+TOT=$(echo "scale=1; (($cntt*100/$total))" | bc)
+ETA=$(($(($((total-cntt))*$(($(date +%s%N)-Tic))/60000000000))/cntt))
+printf " %5s %5s/$total %5s%%  ETA: %4s min\n" $((total-cntt))  $cntt $TOT $ETA
+
+## keep a log of what happened
+echo "$(date +"%F %T") $fname $cntt" >> "${logfile}"
+
+#### HERE IS THE HEAVY LOAD ####
+
+####TEST#### First try this to check what will run
+echo "(( "${UVSPEC}" < "${INPUTF}") | gzip > "${OUTFIL}.gz") 2> ${ERRFIL}"
+sleep $((RANDOM%5+2))
+
+## Then use this to run the load
+#(( "${UVSPEC}" < "${INPUTF}" ) | gzip > "${OUTFIL}.gz" ) 2> ${ERRFIL}
+exit 0
+```
+
+### Αρχείο `xargs_parallel.sh`
+\  
+```{bash eval=FALSE, size="scriptsize"}
+#!/bin/bash
+## Executioner of uvspec worker, this is used to run multiple script instances
+## EDIT all paths to full paths
+
+## this will run a uvspec
+WORKER_sh="./xargs_uvspec_worker.sh"
+## I/O folders
+INPDIR="/path/to/files/for/INPUT/"
+OUTDIR="/path/to/files/for/OUTPUT/"
+ERRDIR="/path/to/files/for/error/"
+
+## Cores to use
+cores=8
+
+####TEST#### DELETE THIS TEST VARIABLE
+INPDIR="/home/.../LibRadTranM/clear_H2O_LAP/DATA"
+
+## initial files count
+total="$(find "${INPDIR}" -type f -iname "*.inp" | wc -l)"
+## ask to continue
+echo "" ; input=0
+echo -n "Found $total input files continue  (y/n)?: "
+read -n 1 input ; echo
+if [ "$input" == "y" -o "$input" == "Y" ] ; then
+    printf ""
+else
+    echo "exit now.."; exit 2
+fi
+## set some variables
+Tic="$(date +%s%N)"    ## keep time
+Tac="$(date +"%F %T")" ## keep time
+cntt=0
+
+#### THIS IS THE PARALLEL TRICK ####
+## run all input files through the WORKER_sh
+find "${INPDIR}" -type f -iname "*.inp" | sort | while read line;do
+    echo "$line" "$((++cntt))"
+done | xargs -n 2 -P "$cores" "$WORKER_sh" "${OUTDIR}" \
+                     "${ERRDIR}" "$total" "$Tic"
+
+## you are done, print end report
+T="$(($(date +%s%N)-Tic))"
+S="$((T/1000000000))"
+M="$((T%1000000000/1000000))"
+echo ""
+echo "    ____UVSPEC_runs_finished____"
+printf "DONE in:        %02d %02d:%02d:%02d.%03d <\n" \
+       "$((S/86400))" "$((S/3600%24))" "$((S/60%60))" "$((S%60))" "${M}"
+echo "From  : $Tac"
+echo "Until : $(date +"%F %T")"
+exit 0
+```
+
+*Σημείωση:* Τα προηγούμενα πιθανότατα θα τρέξουν στον mistral.
+
+**Προσοχή:** *Ακόμα και αν σταματήσει το κύριο script, οι workers θα συνεχίσουν να τρέχουν, οπότε πρέπει να ξέρετε πως μπορεί να σταματήσει ένα script που τρέχει στο background!*
+
+
+
+Παραλληλοποίηση με τη χρήση subshells στο background και της εντολής `wait`.
+--------------------------------------------------------------------------------
+
+Εδώ κάνουμε χρήση μιας απλής τεχνικής ελέγχου του αριθμού των `uvspec` που εκτελούνται από τον υπολογιστή. Η λογική που εφαρμόζουμε είναι, να μετρούμε τις εκτελέσεις που έχουν γίνει και να περιμένουμε να τελειώσει κάποια από αυτές πριν ξεκινήσουμε την επόμενη. 
+
+### Αρχείο `execute_in_subshells.sh`
+\  
+```{bash eval=FALSE, size="scriptsize"}
+#!/bin/bash
+## Simple parallel execution in bash
+## Test it before use. This can not be stopped with 'ctr+C'.
+## All processes are send to the background.
+
+## libradtran executable
+UVSPEC="/path/to/uvspec"
+## folders
+INPDIR="/path/to/files/for/INPUT/"
+OUTDIR="/path/to/files/for/OUTPUT/"
+ERRDIR="/path/to/files/for/error/"
+LBRDAT="/path/to/libradtran/data/folder/data"
+## file to log this run
+logfile="/path/to/a/log/file/JOB_$(date +"%F_%T").log"
+## parameters
+cores=4     ## cores to use
+prs=1       ## counter of concurrent processes
+
+## ensure folders exist
+mkdir -p "${OUTDIR}"
+mkdir -p "${ERRDIR}"
+## export libradtran data files path this may be redundant
+export LIBRADTRAN_DATA_FILES="${LBRDAT}"
+## count files
+total="$(find "${INPDIR}" -type f -iname "*.inp" | wc -l)"
+## ask to continue
+echo "" ; input=0
+echo -n "Found $total input files continue  (y/n)?: "
+read -n 1 input ; echo
+if [ "$input" == "y" -o "$input" == "Y" ] ; then
+    printf ""
+else
+    echo "exit now.."; exit 1
+fi
+cntt=0                 ## count total runs
+((cores--))            ## start from zero
+Tic="$(date +%s%N)"    ## keep time
+Tac="$(date +"%F %T")" ## keep time
+
+## list all input files
+find "${INPDIR}" -type f -iname "*.inp" | while read line; do
+    ((cntt++))                        ## increase count
+    fname=$(basename "$line")         ## input  file-name
+    INPUT="$line"                     ## input  file-name full path
+    OUTPUT="$OUTDIR/${fname%.*}.OUT"  ## output file-name full path
+    ERROR="$ERRDIR/${fname%.*}.err"   ## error  file-name full path
+    ## print some info
+    TOT=$(echo "scale=1; (($cntt*100/$total))" | bc)
+    ETA=$(($(($((total-cntt))*$(($(date +%s%N)-Tic))/60000000000))/cntt))
+    printf " %5s %5s/$total %5s%%  prs: %2s   ETA: %s min\n" \
+           $((total-cntt))  $cntt $TOT $prs $ETA
+    ## keep a log of what happened
+    echo "$(date +"%F %T") $fname $cntt" >> "${logfile}"
+
+    #### uncomment to choose output with gzip compression
+    # ( ( ( "${UVSPEC}" < "${INPUT}" ) | gzip > "${OUTPUT}.gz" ) 2> $ERROR ) &
+
+    #### uncomment for output without compression
+    # ( ( ( "${UVSPEC}" < "${INPUT}" )  > "${OUTPUT}" ) 2> $ERROR ) &
+
+    #### uncomment for output without compression and
+    #### export libradtran data path this may be redundant
+    # ( ( ( export LIBRADTRAN_DATA_FILES="${LBRDAT}"
+    #       "${UVSPEC}" < "${INPUT}" )  > "${OUTPUT}" ) 2> $ERROR ) &
+
+    ## Throttle execution. This keeps script from running everything at once!
+    if (( ++prs > cores )); then
+        wait
+        ((prs--))
+    fi
+done
+
+## wait for the last of the runs after the loop ends
+for i in $(seq 1 $cores); do; wait; done
+## print end report
+T="$(($(date +%s%N)-Tic))"
+S="$((T/1000000000))"
+M="$((T%1000000000/1000000))"
+echo ""
+echo "    ____UVSPEC_runs_finished____"
+printf "DONE in:        %02d %02d:%02d:%02d.%03d <\n" \
+       "$((S/86400))" "$((S/3600%24))" "$((S/60%60))" "$((S%60))" "${M}"
+echo "From  : $Tac"
+echo "Until : $(date +"%F %T")"
+exit 0
+```
+
+*Σημείωση:* Αυτό πιθανότατα δεν θα τρέξει στον mistral λόγω διαφορών στις εκδόσεις της `wait`. Δουλεύει σε διανομές Debian.
+
+**Προσοχή:** _Για να το σταματήσετε πρέπει να τερματίσετε όλες τις διεργασίες που γίνονται στο background και όχι μόνο αυτό το script (ctrl+C). Γι' αυτό πρέπει να  ξέρετε πώς τερματίζονται εργασίες στον background._
+
+
+
+<!-- Bash shell scripts to execute multiple uvspec (LibRadTran) instances. -->
+<!-- Run LibRadTran on one host with xargs parallelization. -->
+<!-- xargs_parallel_v2.sh (Mod: 2017-Mar-13 12:33:05) -->
+<!-- xargs_uvspec_worker_v2.sh (Mod: 2017-Mar-13 12:50:28) -->
+<!-- This is using the xargs command to run multiple worker scripts, each of which can run a uvspec instance. This will probably run on mistral. You can stop the main script, but the currently running workers will continue. -->
+<!-- USAGE: Edit the file paths and the number of cores you want to use and un-comment some lines. -->
+<!-- Run LibRadTran on one host with subshells and wait. -->
+<!-- LBT_execute_in_subshells.sh (Mod: 2017-Mar-10 17:29:57) -->
+<!-- This is using bash to run multiple instances of a shell with a uvspec running inside. It captures stout and sterr at separate files for each one. And can optional compress it. It assumes that you have prepared all the input files you want to run in a folder. -->
+<!-- USAGE: Edit the file paths and the number of cores you want to use and un-comment some lines. -->
+<!-- WARNING: To stop it you need to terminate all the background jobs and not just the script (ctrl+C). -->
+<!-- NOTE: This will probably not run on mistral due to differences on the wait command. But it will run on other hosts. -->
+<!-- LBT_execute_in_subshells_prety.sh (Mod: 2017-Mar-10 18:26:27) -->
+<!-- Same as above but has some logging of the overall processes and a pretty output. (ETA, run/total, completion, etc.) -->
+
+
+
+Παραλληλοποίηση με τη χρήση του `GNU parallel`.
+--------------------------------------------------------------------------------
+
+Με το `parallel` (`GNU parallel`) μπορούμε να χρησιμοποιήσουμε πολλαπλούς πυρήνες ενός υπολογιστή, αλλά και περισσότερους από έναν υπολογιστή (cluster). Το `parallel` είναι στην ουσία ένας διαχειριστής εκτελέσεων (job scheduler). Τα επόμενα παραδείγματα είναι ίσως η πιο απλοποιημένη παραμετροποίση που μπρορούμε να κάνουμε. Για πιο σύνθετες περιπτώσεις δείτε τα εγχειρίδια των προγραμμάτων.
+
+### Παραμετροποίηση cluster.
+
+Για να έχει πρόσβαση το `parallel` στους υπόλοιπους υπολογιστές, χρειάζεται πρώτα να ρυθμίσουμε το `ssh` ώστε να μπορεί να βρει του υπόλοιπους υπολογιστές στο δίκτυο. 
+
+#### Configure network.
+
+Οι υπολογιστές μπορεί να βρίσκονται στο τοπικό μας δίκτυο ή να έχουν σταθερή διεύθυνση IP, οπότε χρειάζεται ελάχιστη ρύθμιση. Είτε, να έχουμε ρυθμισμένο κάποιο VPN ώστε να μην χρειάζεται να μας απασχολεί η περίπτωση της μη σταθερής διεύθυνση IP ή της μετακίνησης του υπολογιστή σε άλλο δίκτυο (π.χ. laptop). 
+
+
+#### Configure ssh.
+
+Πρέπει να έχουμε πρόσβαση σε κάθε υπολογιστή μέσω `ssh` και τη χρήση κλειδιού χωρίς την ανάγκη εισαγωγής κωδικού. Η διαδικασία ρύθμισης είναι εύκολο να βρεθεί στο internet ψάχνοντας π.χ. "passwordless authentication ssh keys". Μετά από αυτό πρέπει να μπορείτε να έχετε πρόσβαση σε κάθε έναν από τους υπολογιστές εκτελώντας την εντολή π.χ. `ssh user@155.207.10.10 -i .ssh/libradtran_cl.pri` χωρίς να εισάγεται κωδικό. Όπου  "155.207.10.10" είναι η θέση του υπολογιστή στο δίκτυο και "libradtran_cl.pri" το αρχείο του προσωπικού κλειδιού πρόσβασης (private key).
+
+Για να οργανώσουμε το cluster χρειάζεται να συμπληρώσουμε ένα παραμετρικό αρχείο του ssh όπου θα αναφέρονται όλοι οι υπολογιστές που θέλουμε να χρησιμοποιήσουμε (default file `.ssh/config`). Αν όλα γίνουν σωστά θα μπορούμε να συνδεόμαστε μέσω `ssh` δίνοντας μόνο το όνομα του υπολογιστή π.χ. `ssh machine_1`. Αυτό, επίσης βοηθάει πολύ, στη γενικότερη αντιμετώπιση των προβλημάτων που μπορεί να προκύψουν, αλλά και στη παραμετροποίηση του κάθε υπολογιστή για την δουλειά που σκοπεύουμε να τρέξουμε. 
+
+###### Παράδειγμα αρχείου `.ssh/config`
+\  
+```{bash eval=FALSE, size="scriptsize"}
+Host machine_1
+    HostName 155.207.10.10
+    User user
+    IdentityFile ~/.ssh/machine1.pri
+
+Host home_pc
+    HostName 10.10.10.1
+    User athan
+    IdentityFile ~/.ssh/libradtran_cl.pri
+
+Host laptop
+    HostName 10.10.10.2
+    User athan
+    IdentityFile ~/.ssh/libradtran_cl.pri
+```
+
+
+### Παραμετροποίηση του `parallel`
+
+Αφού ο κεντρικός υπολογιστής έχει πρόσβαση σε όλους του άλλους μέσω `ssh`, αρκεί ένα απλό παραμετρικό αρχείο για το `parallel`, με του υπολογιστές που θέλουμε να χρησιμοποιήσουμε στο cluster.
+
+Στο παρακάτω αρχείο, δηλώνουμε ότι το cluster θα έχει τέσσερις υπολογιστές. Με το σύμβολο `:` είναι ο κεντρικός υπολογιστής, όπου οι πυρήνες του αναγνωρίζονται αυτόματα. Ο αριθμός πριν το όνομα του υπολογιστή δηλώνει τους πυρήνες του επεξεργαστή που θα είναι διαθέσιμοι από τον κάθε υπολογιστή.
+
+
+###### Παράδειγμα αρχείου `.parallel/hosts`
+\  
+```{eval=FALSE, size="scriptsize"}
+:
+4/machine_1
+2/home_pc
+2/laptop
+```
+
+
+
+### Χρήση `parallel`
+
+Ένα παράδειγμα εκτέλεσης του `parallel`. Η χρήση των παραμέτρων αναλύεται στο manual της εντολής.
+Εδώ χρησιμοποιούμε έναν πυρήνα από κάθε υπολογιστή του cluster, όπου θα τρέξουμε τις εντολές που βρίσκονται στο αρχείο `jobs.list`. Όπου το αρχείο `optimise_worker_v1.R` παίρνει δύο παραμέτρους που τις χρησιμοποιεί για να τρέξει ένα εύρος παραμέτρων από μία άλλη λίστα εργασιών. Έτσι έχουμε χωρίσει την συνολική εργασία σε εκτελέσεις 100 μικρότερων εργασιών που αναθέτουμε σε κάθε υπολογιστή του cluster.   
+
+```{bash eval=FALSE, size="scriptsize"}
+parallel            \
+    --jobs 1        \
+    --progress      \
+    --eta           \
+    --results  /home/athan/Aerosols_O3/DATA/par.out                         \
+    --joblog   /home/athan/Aerosols_O3/Libradtran_modeling/par.resume.file  \
+    --sshloginfile ~/.parallel/hosts \
+    -a /home/athan/Aerosols_O3/Libradtran_modeling/jobs.list
+```
+
+
+###### Αρχείο `jobs.list`.
+\  
+```{bash eval=FALSE, size="scriptsize"}
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 1 100
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 101 200
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 201 300
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 301 400
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 401 500
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 501 600
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 601 700
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 701 800
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 801 900
+/home/athan/Aerosols_O3/Libradtran_modeling/optimise_worker_v1.R 901 1000
+```
+
+### Συγχρονισμός/μεταφορά αρχείων. ###
+
+Ανάλογα με τη λογική της εφαρμογής της παραλληλοποίησης, είναι λιγότερο η περισσότερο απαραίτητο να μετακινούνται αρχεία μεταξύ των υπολογιστών. Αυτά τα αρχεία μπορεί να είναι αρχεία προς επεξεργασία, εκτελέσιμα ή αρχεία αποτελεσμάτων. Το `parallel` έχει κάποιες τέτοιες δυνατότητες, αλλά είναι ίσως πιο εύκολο να χρησιμοποιηθεί κάποια πιο εξειδικευμένη εφαρμογή. Δεν θα αναλύσουμε την εφαρμογή τους αλλά θα δώσουμε κάποιες ιδέες.
+
+
+unison:
+    Αμφίδρομα συγχρονίζει αρχεία μεταξύ υπολογιστών (όσα χρειάζονται), πολλές δυνατότητες παραμετροποίησης.
+    
+rsync:
+    Συγχρονίζει αρχεία μεταξύ υπολογιστών (όσα χρειάζονται), βελτιστοποιημένο στη μεταφορά αρχείων.
+    
+owncloud:
+    Cloud server απόθεσης αρχείων, μπορεί να εγκατασταθεί σε οποιονδήποτε υπολογιστή και οι υπόλοιποι να συγχρονίζονται από αυτόν.
+    
+nfs:
+    Δίσκος δικτύου, στον οποίο συνδέονται όλοι οι υπολογιστές και τον χρησιμοποιούν ως τοπικό. 
+
+
+Προφανώς υπάρχουν και άλλοι τρόποι, και όποια επιλογή εξαρτάται από την διάρθρωση του δικτύου, τους διαθέσιμους πόρους και τον επιθυμητό στόχο.

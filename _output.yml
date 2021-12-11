@@ -1,0 +1,33 @@
+
+bookdown::gitbook:
+  css: style.css
+  config:
+    toc:
+      before: |
+        <li><a href="./">LibRadtran guide, LAP</a></li>
+      after: |
+        <li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
+    edit: null
+    number_sections: false
+    download:        ["pdf"]
+    sharing:
+      facebook:      false
+      twitter:       false
+      all:           false
+    # fontsettings:
+      # theme:         night
+  split_by:          none
+  keep_tex:          false
+  keep_md:           false
+  number_sections:   false
+# bookdown::epub_book: default
+
+bookdown::pdf_book:
+  template:         template_default-1.17.0.2.tex
+  includes:
+    in_header:       preamble.tex
+  latex_engine:      xelatex
+  citation_package:  natbib
+  keep_tex:          false
+  keep_md:           false
+
