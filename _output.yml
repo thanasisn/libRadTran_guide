@@ -9,7 +9,7 @@ bookdown::gitbook:
         <li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
     edit: null
     number_sections: false
-    download:        ["pdf"]
+    download:        ["pdf","docx"]
     sharing:
       facebook:      false
       twitter:       false
@@ -30,4 +30,10 @@ bookdown::pdf_book:
   citation_package:  natbib
   keep_tex:          false
   keep_md:           false
+  extra_dependencies:
+    fontspec: null
+    xunicode: null
+    xltxtra:  null
+    # xgreek:   null
 
+bookdown::word_document2: default
