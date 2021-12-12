@@ -37,3 +37,4 @@ bookdown::pdf_book:
     # xgreek:   null
 
 bookdown::word_document2: default
+
