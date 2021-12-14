@@ -1,6 +1,8 @@
 
 bookdown::gitbook:
-  css: style.css
+  includes:
+    in_header:       google_libratran_guide.html
+  css:               style.css
   config:
     toc:
       # subsection, section, none (or null)
