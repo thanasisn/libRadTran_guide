@@ -44,7 +44,7 @@ knitr::knit_hooks$set(engine = function(before, options) {
     }
     NULL
 })
-source("~/Aerosols/Thesis/code_parse.R")
+source("~/PANDOC/Thesis/code_parse.R")
 def.chunk.hook  <- knitr::knit_hooks$get("chunk")
 knitr::knit_hooks$set(chunk = function(x, options) {
     x <- def.chunk.hook(x, options)
