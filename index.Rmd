@@ -32,10 +32,19 @@ colorlinks:      yes
 
 ```{r setup, include=FALSE}
 require(knitr)
-opts_chunk$set(cache=F)
-opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(cache = FALSE)
 opts_chunk$set(out.width = '90%', fig.align='center')
-
+opts_chunk$set(tidy = TRUE,
+                      tidy.opts = list(
+                        indent       = 4,
+                        wrap         = TRUE,
+                        blank        = FALSE,
+                        comment      = TRUE,
+                        args.newline = TRUE,
+                        width        = 55,
+                        args.newline = TRUE,
+                        arrow        = TRUE)
+                      )
 def_list = list()
 knitr::knit_hooks$set(engine = function(before, options) {
     if (before && options$engine == 'definition') {
@@ -44,12 +53,12 @@ knitr::knit_hooks$set(engine = function(before, options) {
     }
     NULL
 })
-source("~/PANDOC/Thesis/code_parse.R")
-def.chunk.hook  <- knitr::knit_hooks$get("chunk")
-knitr::knit_hooks$set(chunk = function(x, options) {
-    x <- def.chunk.hook(x, options)
-    ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
-})
+# source("~/MANUSCRIPTS/03_thesis/MAIN_el/code_parse.R")
+# def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+# knitr::knit_hooks$set(chunk = function(x, options) {
+#     x <- def.chunk.hook(x, options)
+#     ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+# })
 ```
 
 
