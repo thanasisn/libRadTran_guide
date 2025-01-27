@@ -42,7 +42,6 @@ opts_chunk$set(tidy = TRUE,
                         comment      = TRUE,
                         args.newline = TRUE,
                         width        = 55,
-                        args.newline = TRUE,
                         arrow        = TRUE)
                       )
 def_list = list()

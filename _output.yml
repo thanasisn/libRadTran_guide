@@ -1,7 +1,7 @@
 
 bookdown::gitbook:
-  includes:
-    in_header:       google_libratran_guide.html
+  # includes:
+  #   in_header:       google_libratran_guide.html
   css:               style.css
   config:
     toc:
@@ -40,5 +40,5 @@ bookdown::pdf_book:
     xltxtra:  null
     # xgreek:   null
 
-bookdown::word_document2: default
+# bookdown::word_document2: default
 

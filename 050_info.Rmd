@@ -4,7 +4,7 @@
 # Χρήσιμες πληροφορίες για τη χρήση της libRadtran. 
 
 ## Μονάδες μέτρησης ηλιακού φάσματος. ##
-Οι μονάδες μέτρησης των αποτελεσμάτων είναι ίδιες με του παραμετρικού αρχείου εισόδου του ηλιακού φάσματος. Για παράδειγμα για το αρχείο 'kurudz_0.1nm.dat' αναφέρεται ότι:
+Οι μονάδες μέτρησης των αποτελεσμάτων είναι ίδιες με του παραμετρικού αρχείου εισόδου του ηλιακού φάσματος. Για παράδειγμα, για το αρχείο 'kurudz_0.1nm.dat' αναφέρεται ότι:
 
 > The original Kurudz [1992] data were converted to $mW / (m^2 nm)$ and averaged over $0.1nm$ intervals centered around the given wavelength.
 
@@ -104,26 +104,13 @@ uu_down, uu_up
 ## Προειδοποίηση για τη γωνία ${SZA}=43.2^\circ$.
 
 H ζενίθια γωνία των $43.2^\circ$ προκαλεί μία προειδοποίηση (warning).
-Το οποίο σχετίζεται με την δυνατότητα υπολογσιμού τριγωνομετρικών συναρτήσεων
+Το οποίο σχετίζεται με την δυνατότητα υπολογισμού τριγωνομετρικών συναρτήσεων
 μικρών γωνιών.
 
 ```
 * * * * * * * WARNING > > > > > >
  SETDIS--beam angle=computational angle;
- * * * * * * * changing cosine of solar zenith angle, umu0, from  0.728969 to 0.728928
+* * * * * * * changing cosine of solar zenith angle, umu0, from  0.728969 to 0.728928
 ```
 
-<!--
-asdsad dsa asas [@item3]
 
-asdsad dsa asas [-@item3]
-
-asdsad dsa asas @item3
-
-asdsad dsa asas [@anderson1986afgl]
-
-asdsad dsa asas [@anderson1986afgl sdfsdlkj lkj ]
-
-asdsad dsa asas [@item3; @item2; @item1]
-
-asdsad dsa asas [@item3; @item2; @item1]-->
