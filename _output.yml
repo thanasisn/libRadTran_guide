@@ -27,7 +27,7 @@ bookdown::gitbook:
 # bookdown::epub_book: default
 
 bookdown::pdf_book:
-  template:         template_default-1.17.0.2.tex
+  template:          template_default-1.17.0.2.tex
   includes:
     in_header:       preamble.tex
   latex_engine:      xelatex
