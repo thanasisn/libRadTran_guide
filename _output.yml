@@ -1,12 +1,8 @@
 
 bookdown::gitbook:
-  # includes:
-  #   in_header:       google_libratran_guide.html
   css:               style.css
   config:
     toc:
-      # subsection, section, none (or null)
-      # collapse: subsection
       before: |
         <li><a href="./">LibRadtran guide, LAP</a></li>
       after: |
